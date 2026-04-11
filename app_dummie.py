@@ -256,3 +256,57 @@ with st.expander("Consultar al Agente de Datos", expanded=True):
     # Ejecutamos la "IA" localmente
     analisis_ia = generar_narrativa_ia(oc_idx[col_oc_buscada], psto_idx[nombre_psto_inicio], mes_analisis)
     st.markdown(analisis_ia)
+
+# ==========================================
+# 8. AGENTE DE DIAGNÓSTICO LÓGICO (DINÁMICO)
+# ==========================================
+st.divider()
+st.subheader("🧠 Agente de Diagnóstico Real-Time")
+
+def generar_diagnostico_dinamico(df_resumen, df_original):
+    # 1. Detección de Calidad de Datos (Errores en la base original)
+    total_registros = len(df_original)
+    # Ejemplo: detectamos cuántos códigos no coinciden con el rubro antes de nuestra limpieza
+    errores_formato = df_original[df_original['Monto (MXN)'] <= 0].shape[0]
+    
+    # 2. Análisis de Presupuesto (Usando tu tabla resumen 'vp')
+    # Extraemos el ratio numérico eliminando el símbolo % y el texto
+    df_resumen['Ratio_Num'] = df_resumen['Ratio %'].str.extract('(\d+\.\d+)').astype(float)
+    
+    rubro_mas_critico = df_resumen['Ratio_Num'].idxmax()
+    valor_max = df_resumen['Ratio_Num'].max()
+    
+    # 3. Determinación de Nivel de Riesgo
+    if valor_max > 200:
+        status = "CRÍTICO"
+        color = "red"
+        recomendacion = f"Suspender inmediatamente toda OC de {rubro_mas_critico}."
+    elif valor_max > 100:
+        status = "ADVERTENCIA"
+        color = "orange"
+        recomendacion = "Revisar prioridades y mover presupuesto de rubros con saldo positivo."
+    else:
+        status = "SALUDABLE"
+        color = "green"
+        recomendacion = "Continuar con el plan de gasto original."
+
+    # 4. Construcción del mensaje basado en hallazgos reales
+    mensaje = f"""
+    ### Estado del Sistema: :{color}[{status}]
+    
+    **Hallazgos de Calidad de Datos:**
+    * Se identificaron **{errores_formato} registros con montos inválidos** (≤ 0) en la base original que fueron excluidos para no contaminar el análisis.
+    * La integridad de los rubros fue normalizada mediante el mapeo de prefijos de códigos OC.
+
+    **Hallazgos Financieros:**
+    * El rubro **{rubro_mas_critico}** muestra la mayor desviación con un **{valor_max:.1f}%** de ejecución.
+    * **Impacto:** Este nivel de gasto genera un bloqueo de liquidez que impide nuevas compras en este rubro por los próximos meses.
+
+    **Acción sugerida:** {recomendacion}
+    """
+    return mensaje
+
+# Ejecución vinculada a tus variables reales (vp es tu tabla resumen)
+with st.expander("Consultar Diagnóstico Basado en Datos", expanded=True):
+    diagnostico_real = generar_diagnostico_dinamico(vp, ocp_raw) # Asegúrate de pasar tu DF original aquí
+    st.markdown(diagnostico_real)
