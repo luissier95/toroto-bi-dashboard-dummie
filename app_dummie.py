@@ -19,8 +19,8 @@ st.markdown("""
 # 1. CARGA DE DATOS
 @st.cache_data
 def cargar_datos():
-    ocp = pd.read_excel('db_caso_practico_BI_.xlsx', sheet_name='Ordenes_Compra')
-    psto = pd.read_excel('db_caso_practico_BI_.xlsx', sheet_name='Presupuesto')
+    ocp = pd.read_excel('db_caso_practico_BI_dummie.xlsx', sheet_name='Ordenes_Compra')
+    psto = pd.read_excel('db_caso_practico_BI_dummie.xlsx', sheet_name='Presupuesto')
     return ocp, psto
 
 try:
