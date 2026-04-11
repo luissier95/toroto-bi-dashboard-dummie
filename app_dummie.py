@@ -33,6 +33,7 @@ except Exception as e:
 # 2. PROCESAMIENTO Y PROYECCIÓN
 # ==========================================
 ocp = ocp_raw.copy()
+ocp['Código OC'] = ocp['Código OC'].str.upper().drop_duplicates()
 ocp['Fecha'] = pd.to_datetime(ocp['Fecha'])
 ocp['month'] = ocp['Fecha'].dt.month
 ocp['anio'] = ocp['Fecha'].dt.year
