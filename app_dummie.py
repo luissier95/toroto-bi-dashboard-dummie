@@ -19,8 +19,8 @@ st.markdown("""
 # 1. CARGA DE DATOS
 @st.cache_data
 def cargar_datos():
-    ocp = pd.read_excel('db_caso_practico_BI_dummie.xlsx', sheet_name='Ordenes_Compra')
-    psto = pd.read_excel('db_caso_practico_BI_dummie.xlsx', sheet_name='Presupuesto')
+    ocp = pd.read_excel('db_caso_practico_BI_.xlsx', sheet_name='Ordenes_Compra')
+    psto = pd.read_excel('db_caso_practico_BI_.xlsx', sheet_name='Presupuesto')
     return ocp, psto
 
 try:
@@ -30,22 +30,41 @@ except Exception as e:
     st.stop()
 
 # ==========================================
-# 2. PROCESAMIENTO Y PROYECCIÓN
+# 2. PROCESAMIENTO Y MÉTRICAS DE CALIDAD
 # ==========================================
 ocp = ocp_raw.copy()
-ocp['Código OC'] = ocp['Código OC'].str.upper().drop_duplicates()
+
+# A. Capturar Duplicados antes de limpiar
+duplicados_count = ocp.duplicated(subset=['Código OC']).sum()
+ocp = ocp.drop_duplicates(subset=['Código OC'])
+
+# B. Procesar Fechas y Capturar fuera de rango
 ocp['Fecha'] = pd.to_datetime(ocp['Fecha'])
-ocp['month'] = ocp['Fecha'].dt.month
-ocp['anio'] = ocp['Fecha'].dt.year
+fecha_min, fecha_max = pd.Timestamp(2025, 12, 1), pd.Timestamp(2026, 1, 31)
+fuera_rango_count = ocp[(ocp['Fecha'] < fecha_min) | (ocp['Fecha'] > fecha_max)].shape[0]
+
+# C. Normalización de Rubros
 ocp['f_left'] = ocp['Código OC'].str[:3].str.upper()
 mapping = {'MAR':'Marketing', 'TEC':'Tecnología', 'VIA':'Viajes', 'OPE':'Operación'}
 ocp['Rubro'] = ocp['f_left'].map(mapping)
+ocp['month'] = ocp['Fecha'].dt.month
+ocp['anio'] = ocp['Fecha'].dt.year
+
+# D. Limpieza de Montos e Outliers
+invalidos_monto_count = ocp[ocp['Monto (MXN)'] <= 0].shape[0]
+ocp = ocp[ocp['Monto (MXN)'] > 0] 
 
 stats = ocp.groupby('Rubro')['Monto (MXN)'].agg(['mean', 'std']).reset_index()
 stats['umbral'] = stats['mean'] + (2 * stats['std'])
 ocp = ocp.merge(stats[['Rubro', 'umbral']], on='Rubro')
-ocp = ocp[(ocp['Monto (MXN)'] > 0) & (ocp['Monto (MXN)'] <= ocp['umbral'])]
 
+outliers_count = ocp[ocp['Monto (MXN)'] > ocp['umbral']].shape[0]
+
+# Filtrado Final
+ocp = ocp[(ocp['Fecha'] >= fecha_min) & (ocp['Fecha'] <= fecha_max)]
+ocp = ocp[ocp['Monto (MXN)'] <= ocp['umbral']]
+
+# E. Proyección de Presupuesto (Tu lógica original se mantiene igual)
 psto = psto_raw.rename(columns={'Diciembre 2025': 'Diciembre 2025 - PSTO', 'Enero 2026': 'Enero 2026 - PSTO'}).sort_values(by='Rubro')
 meses_proyectar = ['Febrero 2026', 'Marzo 2026', 'Abril 2026', 'Mayo 2026', 'Junio 2026', 'Julio 2026', 'Agosto 2026', 'Septiembre 2026', 'Octubre 2026', 'Noviembre 2026', 'Diciembre 2026']
 factores = {'Tecnología': 0.99, 'Marketing': 0.99, 'Operación': 1.01, 'Viajes': 1.01}
@@ -221,57 +240,58 @@ if res:
 else:
     st.error(f"❌ NO HAY CUPO SUFICIENTE en 2026 para este monto en {rubro_sim} debido a la deuda acumulada.")
 
-
 # ==========================================
 # 7. AGENTE DE DIAGNÓSTICO LÓGICO (DINÁMICO)
 # ==========================================
 st.divider()
 st.subheader("🧠 Agente de Diagnóstico Real-Time")
 
-def generar_diagnostico_dinamico(df_resumen, df_original):
-    # 1. Detección de Calidad de Datos (Errores en la base original)
-    total_registros = len(df_original)
-    # Ejemplo: detectamos cuántos códigos no coinciden con el rubro antes de nuestra limpieza
-    errores_formato = df_original[df_original['Monto (MXN)'] <= 0].shape[0]
+def generar_diagnostico_dinamico(df_resumen, d_dups, d_fechas, d_montos, d_outliers):
+    df_temp = df_resumen.copy()
+    df_temp['Ratio_Num'] = df_temp['Ratio %'].str.extract('(\d+\.\d+)').astype(float).fillna(0)
     
-    # 2. Análisis de Presupuesto (Usando tu tabla resumen 'vp')
-    # Extraemos el ratio numérico eliminando el símbolo % y el texto
-    df_resumen['Ratio_Num'] = df_resumen['Ratio %'].str.extract('(\d+\.\d+)').astype(float)
+    rubro_critico = df_temp['Ratio_Num'].idxmax()
+    valor_max = df_temp['Ratio_Num'].max()
     
-    rubro_mas_critico = df_resumen['Ratio_Num'].idxmax()
-    valor_max = df_resumen['Ratio_Num'].max()
-    
-    # 3. Determinación de Nivel de Riesgo
+    acciones = []
     if valor_max > 200:
-        status = "CRÍTICO"
-        color = "red"
-        recomendacion = f"Suspender inmediatamente toda OC de {rubro_mas_critico}."
+        status, color = "CRÍTICO", "red"
+        acciones.append(f"🚫 **Bloqueo Preventivo:** Suspender nuevas OC en **{rubro_critico}**. El exceso ($\Delta > {int(valor_max-100)}%$) compromete meses futuros.")
+        acciones.append(f"🔄 **Re-forecast Obligatorio:** Ajustar el presupuesto de {rubro_critico} ya que el plan actual es insuficiente.")
+        acciones.append(f"🔍 **Auditoría de Gastos:** Revisar conceptos de alto valor para detectar fugas.")
     elif valor_max > 100:
-        status = "ADVERTENCIA"
-        color = "orange"
-        recomendacion = "Revisar prioridades y mover presupuesto de rubros con saldo positivo."
+        status, color = "ADVERTENCIA", "orange"
+        acciones.append(f"⚠️ **Control de Flujo:** Limitar gastos en **{rubro_critico}** solo a operaciones críticas.")
+        acciones.append(f"📊 **Optimización:** Reasignar excedentes de rubros saludables.")
     else:
-        status = "SALUDABLE"
-        color = "green"
-        recomendacion = "Continuar con el plan de gasto original."
+        status, color = "SALUDABLE", "green"
+        acciones.append(f"✅ **Continuidad:** Mantener ritmo de ejecución conforme al plan.")
 
-    # 4. Construcción del mensaje basado en hallazgos reales
-    mensaje = f"""
-    ### Estado del Sistema: :{color}[{status}]
+    acciones_format = "\n".join([f"* {a}" for a in acciones])
     
-    **Hallazgos de Calidad de Datos:**
-    * Se identificaron **{errores_formato} registros con montos inválidos** (≤ 0) en la base original que fueron excluidos para no contaminar el análisis.
-    * La integridad de los rubros fue normalizada mediante el mapeo de prefijos de códigos OC.
+    # IMPORTANTE: El texto debe estar pegado al margen izquierdo dentro de las comillas triples
+    mensaje = f"""
+### Estado del Sistema: :{color}[{status}]
 
-    **Hallazgos Financieros:**
-    * El rubro **{rubro_mas_critico}** muestra la mayor desviación con un **{valor_max:.1f}%** de ejecución.
-    * **Impacto:** Este nivel de gasto genera un bloqueo de liquidez que impide nuevas compras en este rubro por los próximos meses.
+**🔍 Auditoría de Calidad de Datos:**
+* **Limpieza:** Se removieron **{d_dups}** duplicados, **{d_fechas}** fechas inválidas y **{d_montos + d_outliers}** anomalías de monto.
+* **Integridad:** La base ha sido normalizada al 100% mediante mapeo de prefijos OC.
 
-    **Acción sugerida:** {recomendacion}
-    """
+**📈 Análisis de Variación Presupuestal:**
+* El rubro de mayor atención es **{rubro_critico}** con un ratio de ejecución del **{valor_max:.1f}%**.
+
+**💡 Acciones Sugeridas:**
+{acciones_format}
+"""
     return mensaje
 
-# Ejecución vinculada a tus variables reales (vp es tu tabla resumen)
-with st.expander("Consultar Diagnóstico Basado en Datos", expanded=True):
-    diagnostico_real = generar_diagnostico_dinamico(vp, ocp_raw) # Asegúrate de pasar tu DF original aquí
-    st.markdown(diagnostico_real)
+# LLAMADO FINAL (Usa las variables nacidas en la sección 2)
+with st.expander("Consultar Diagnóstico de Integridad y Escenarios", expanded=True):
+    diag = generar_diagnostico_dinamico(
+        vp, 
+        duplicados_count, 
+        fuera_rango_count, 
+        invalidos_monto_count, 
+        outliers_count
+    )
+    st.markdown(diag)
