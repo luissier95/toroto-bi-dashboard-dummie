@@ -221,44 +221,9 @@ if res:
 else:
     st.error(f"❌ NO HAY CUPO SUFICIENTE en 2026 para este monto en {rubro_sim} debido a la deuda acumulada.")
 
-# ==========================================
-# 7. AGENTE DE ANÁLISIS IA (NARRATIVA AUTOMÁTICA)
-# ==========================================
-st.divider()
-st.subheader("🤖 Agente de Análisis Presupuestal (AI-Powered)")
-
-def generar_narrativa_ia(df_oc, df_psto, mes):
-    # Cálculos clave para la "mente" de la IA
-    ratio = (df_oc / df_psto) * 100
-    peor_rubro = ratio.idxmax()
-    mejor_rubro = ratio.idxmin()
-    variacion_total = df_psto.sum() - df_oc.sum()
-    
-    # Lógica de interpretación (Prompt Engineering interno)
-    status = "CRÍTICO" if ratio.mean() > 150 else "ESTABLE"
-    
-    # Construcción de la respuesta narrativa
-    narrativa = f"""
-    ### 📝 Diagnóstico del Agente:
-    Tras analizar los datos de **{mes}**, mi diagnóstico es **{status}**. 
-    
-    * **Hallazgo Principal:** El rubro de **{peor_rubro}** presenta una desviación del **{ratio.max():,.1f}%**. Esto no es un error de captura, es una insuficiencia presupuestal estructural.
-    * **Punto de Equilibrio:** El rubro de **{mejor_rubro}** es el que mejor se apega al plan, con una ejecución del **{ratio.min():,.1f}%**.
-    * **Impacto en Caja:** Tenemos una variación neta de **${variacion_total:,.0f}**. 
-    
-    ### 🛡️ Recomendación del Agente:
-    1. **Frenar** inmediatamente nuevas OCs en {peor_rubro}.
-    2. **Reasignar** el excedente de {mejor_rubro} para mitigar el sobregiro general.
-    """
-    return narrativa
-
-with st.expander("Consultar al Agente de Datos", expanded=True):
-    # Ejecutamos la "IA" localmente
-    analisis_ia = generar_narrativa_ia(oc_idx[col_oc_buscada], psto_idx[nombre_psto_inicio], mes_analisis)
-    st.markdown(analisis_ia)
 
 # ==========================================
-# 8. AGENTE DE DIAGNÓSTICO LÓGICO (DINÁMICO)
+# 7. AGENTE DE DIAGNÓSTICO LÓGICO (DINÁMICO)
 # ==========================================
 st.divider()
 st.subheader("🧠 Agente de Diagnóstico Real-Time")
